@@ -1,4 +1,3 @@
-# ui/syntax_highlighter.py
 """
 Подсветка синтаксиса 1С (BSL) для QPlainTextEdit.
 Использует Pygments для лексического анализа и QSyntaxHighlighter для рендеринга.
@@ -54,9 +53,10 @@ class OneCHighlighter(QSyntaxHighlighter):
                 # Попытка использовать BSL лексер из pygments-bsl
                 self.lexer = get_lexer_by_name('bsl')
             except:
-                raise RuntimeError("pygments-bsl не установлен. Установите: pip install pygments-bsl")
+                print("Warning: pygments-bsl not found. Highlighting disabled.")
+                self.lexer = None
         else:
-            raise RuntimeError("Pygments не установлен. Установите: pip install Pygments pygments-bsl")
+            print("Warning: Pygments not found. Highlighting disabled.")
     
     def _get_default_color_scheme(self):
         """Цветовая схема по умолчанию (темная тема в стиле VS Code)"""
@@ -127,36 +127,45 @@ class OneCHighlighter(QSyntaxHighlighter):
     def _get_format_for_token(self, token_type):
         """
         Сопоставление типов токенов Pygments с нашими форматами.
+        Используем строковое представление типа для надежного сопоставления.
         """
-        # Комментарии (БЕЗ курсива для единообразия)
-        if token_type in Comment:
+        token_str = str(token_type)
+        
+        # Комментарии (включая многострочные и специальные)
+        if 'Comment' in token_str:
             return self.formats['comment']
         
-        # Ключевые слова
-        if token_type in Keyword:
-            return self.formats['keyword']
-        
-        # Строки (включая многострочные)
-        if token_type in String or token_type in Literal.String:
+        # Строки (включая Doc-строки и многострочные)
+        if 'String' in token_str or 'Literal.String' in token_str:
             return self.formats['string']
         
         # Числа
-        if token_type in Number or token_type in Literal.Number:
+        if 'Number' in token_str or 'Literal.Number' in token_str:
             return self.formats['number']
         
-        # Функции и имена
-        if token_type in Name.Function:
-            return self.formats['function']
+        # Ключевые слова (Procedure, Function, If, etc.)
+        if 'Keyword' in token_str:
+            return self.formats['keyword']
         
-        if token_type in Name.Builtin:
+        # Встроенные функции и типы (GlobalContext)
+        if 'Name.Builtin' in token_str:
             return self.formats['builtin']
+            
+        # Объявления функций и вызовы
+        if 'Name.Function' in token_str:
+            return self.formats['function']
+            
+        # Директивы препроцессора (&НаКлиенте, #Если)
+        # В Pygments BSL они могут определяться как Comment.Preproc или Keyword
+        if 'Comment.Preproc' in token_str or 'Directive' in token_str:
+            return self.formats['directive']
         
-        # Операторы
-        if token_type in Operator or token_type in Punctuation:
+        # Операторы и пунктуация
+        if 'Operator' in token_str or 'Punctuation' in token_str:
             return self.formats['operator']
         
         # Ошибки
-        if token_type in Error:
+        if 'Error' in token_str:
             return self.formats['error']
         
         return None
@@ -184,7 +193,7 @@ COLOR_SCHEMES = {
         'keyword': ('#569CD6', True, False),
         'builtin': ('#4EC9B0', False, False),
         'function': ('#DCDCAA', False, False),
-        'comment': ('#6A9955', False, False),  # БЕЗ курсива
+        'comment': ('#6A9955', False, False),
         'string': ('#CE9178', False, False),
         'number': ('#B5CEA8', False, False),
         'directive': ('#C586C0', False, False),
@@ -196,7 +205,7 @@ COLOR_SCHEMES = {
         'keyword': ('#0000FF', True, False),
         'builtin': ('#267F99', False, False),
         'function': ('#795E26', False, False),
-        'comment': ('#008000', False, False),  # БЕЗ курсива
+        'comment': ('#008000', False, False),
         'string': ('#A31515', False, False),
         'number': ('#098658', False, False),
         'directive': ('#AF00DB', False, False),
