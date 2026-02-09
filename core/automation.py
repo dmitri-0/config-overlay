@@ -13,8 +13,8 @@ class Automation:
         if not hwnd: return
         try:
             ctypes.windll.user32.SetForegroundWindow(hwnd)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Не удалось активировать окно: {e}")
 
     @staticmethod
     def send_copy_command():
@@ -23,7 +23,7 @@ class Automation:
         # 1. Отпускаем клавиши
         pyautogui.keyUp('shift')
         pyautogui.keyUp('ctrl')
-        time.sleep(0.1)
+        #time.sleep(0.1)
         
         # 2. Жмем Ctrl+A, Ctrl+C
         pyautogui.hotkey('ctrl', 'a')
@@ -51,14 +51,7 @@ class Automation:
     @staticmethod
     def send_paste_command(target_hwnd, text):
         clipboard = QApplication.clipboard()
-        
-        # Цикл попыток записи (на случай если буфер занят другим процессом)
-        for i in range(5):
-            try:
-                clipboard.setText(text)
-                break
-            except:
-                time.sleep(0.1)
+        clipboard.setText(text)
         
         Automation.set_active_window(target_hwnd)
         time.sleep(0.2) 

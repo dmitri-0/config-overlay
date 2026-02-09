@@ -1,6 +1,9 @@
+# ui/editor.py
 from PySide6.QtWidgets import QMainWindow, QPlainTextEdit
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QShortcut, QKeySequence, QTextCursor
+
+from ui.styles import EditorStyles
 
 class OverlayWindow(QMainWindow):
     on_save = Signal(str)   # Сохранить и вставить
@@ -13,7 +16,10 @@ class OverlayWindow(QMainWindow):
         self.apply_style()
         
         self.editor = QPlainTextEdit()
-        font = QFont("JetBrains Mono", 14)
+        font = QFont(
+            EditorStyles.get_font_family(),
+            EditorStyles.get_font_size()
+        )
         font.setStyleHint(QFont.Monospace)
         self.editor.setFont(font)
         self.setCentralWidget(self.editor)
@@ -49,11 +55,4 @@ class OverlayWindow(QMainWindow):
         self.on_exit_app.emit()
 
     def apply_style(self):
-        self.setStyleSheet("""
-            QPlainTextEdit {
-                background-color: #1e1e1e;
-                color: #dcdcdc;
-                border: none;
-                padding: 20px;
-            }
-        """)
+        self.setStyleSheet(EditorStyles.get_editor_stylesheet())
