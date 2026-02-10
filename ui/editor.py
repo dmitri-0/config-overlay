@@ -267,39 +267,22 @@ class OverlayWindow(QMainWindow):
             self.editor.setTextCursor(cursor)
     
     def _scroll_to_top(self, line_number):
-        """Прокрутить редактор так, чтобы указанная строка была вверху."""
-        # Получаем блок по номеру строки
-        block = self.editor.document().findBlockByNumber(line_number)
+        """Прокрутить редактор так, чтобы указанная строка стала первой видимой строкой."""
+        doc = self.editor.document()
+        block = doc.findBlockByNumber(line_number)
         if not block.isValid():
             return
-        
-        # Создаем курсор на этой позиции
-        cursor = QTextCursor(block)
-        
-        # Используем ensureCursorVisible для базовой прокрутки
-        self.editor.setTextCursor(cursor)
-        self.editor.ensureCursorVisible()
-        
-        # Дополнительная прокрутка, чтобы строка была ближе к верху
-        # Получаем геометрию видимой области
-        viewport = self.editor.viewport()
-        viewport_height = viewport.height()
-        
-        # Получаем координаты курсора
-        cursor_rect = self.editor.cursorRect(cursor)
-        
-        # Вычисляем желаемое смещение (строка должна быть в верхней части)
-        desired_offset = int(viewport_height * 0.1)  # 10% от верха
-        
-        # Прокручиваем вертикальный скроллбар
-        scrollbar = self.editor.verticalScrollBar()
-        current_value = scrollbar.value()
-        
-        # Вычисляем смещение для прокрутки
-        scroll_adjustment = cursor_rect.top() - desired_offset
-        
-        # Применяем прокрутку
-        scrollbar.setValue(current_value + scroll_adjustment)
+
+        # Для QPlainTextEdit самый надежный способ: вычислить, где блок находится сейчас
+        # относительно верхнего края viewport, и сдвинуть scrollbar на эту величину.
+        def _do_scroll():
+            y = self.editor.blockBoundingGeometry(block).translated(self.editor.contentOffset()).top()
+            sb = self.editor.verticalScrollBar()
+            sb.setValue(sb.value() + int(y))
+
+        _do_scroll()
+        # Повторяем на следующем цикле событий, чтобы учесть пересчет layout/visibility после смены курсора (auto_fold_methods).
+        QTimer.singleShot(0, _do_scroll)
 
     # --- Logic for Auto Folding ---
 
