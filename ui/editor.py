@@ -267,22 +267,28 @@ class OverlayWindow(QMainWindow):
             self.editor.setTextCursor(cursor)
     
     def _scroll_to_top(self, line_number):
-        """Прокрутить редактор так, чтобы указанная строка стала первой видимой строкой."""
-        doc = self.editor.document()
-        block = doc.findBlockByNumber(line_number)
+        """Прокрутить редактор так, чтобы указанная строка стала первой видимой."""
+        block = self.editor.document().findBlockByNumber(line_number)
         if not block.isValid():
             return
-
-        # Для QPlainTextEdit самый надежный способ: вычислить, где блок находится сейчас
-        # относительно верхнего края viewport, и сдвинуть scrollbar на эту величину.
-        def _do_scroll():
-            y = self.editor.blockBoundingGeometry(block).translated(self.editor.contentOffset()).top()
-            sb = self.editor.verticalScrollBar()
-            sb.setValue(sb.value() + int(y))
-
-        _do_scroll()
-        # Повторяем на следующем цикле событий, чтобы учесть пересчет layout/visibility после смены курсора (auto_fold_methods).
-        QTimer.singleShot(0, _do_scroll)
+        
+        # Сначала используем centerCursor для базовой прокрутки
+        cursor = QTextCursor(block)
+        self.editor.setTextCursor(cursor)
+        self.editor.centerCursor()
+        
+        # Теперь прокручиваем вверх, чтобы строка была в самом верху
+        scrollbar = self.editor.verticalScrollBar()
+        
+        # Вычисляем, сколько строк надо прокрутить вверх
+        # Получаем высоту viewport и прокручиваем на половину вверх
+        viewport_height = self.editor.viewport().height()
+        line_height = self.editor.fontMetrics().height()
+        lines_in_half_viewport = viewport_height // (2 * line_height)
+        
+        # Прокручиваем вверх на половину экрана (чтобы строка стала сверху)
+        current_value = scrollbar.value()
+        scrollbar.setValue(current_value - lines_in_half_viewport)
 
     # --- Logic for Auto Folding ---
 
