@@ -44,7 +44,7 @@ class BSLLexer:
     - Ключевые слова (Процедура, Функция, Если и т.д.)
     - Встроенные функции и типы
     - Комментарии (однострочные //)
-    - Строки (обычные "..." и многострочные |...)
+    - Строки ("..." с экранированием "" и многострочные)
     - Числа
     - Директивы препроцессора (#Если, &НаКлиенте)
     - Операторы
@@ -135,11 +135,9 @@ class BSLLexer:
             'whitespace': re.compile(r'\s+'),
             'comment': re.compile(r'//[^\n]*'),
             'directive': re.compile(r'[#&][А-Яа-яA-Za-z_][А-Яа-яA-Za-z0-9_]*'),
-            'multiline_string': re.compile(r'\|[^\n]*'),  # Многострочная строка
-            'string': re.compile(r'"(?:[^"]|"")*"'),  # Строки с экранированием ""
-            'number': re.compile(r'\b\d+(?:\.\d+)?\b'),  # Целые и дробные числа
+            'number': re.compile(r'\b\d+(?:\.\d+)?\b'),
             'identifier': re.compile(r'[А-Яа-яA-Za-z_][А-Яа-яA-Za-z0-9_]*'),
-            'operator': re.compile(r'[+\-*/%=<>!;,\.()\[\]{}:]'),  # БЕЗ |
+            'operator': re.compile(r'[+\-*/%=<>!;,\.()\[\]{}:|]'),
         }
     
     def tokenize(self, text: str) -> list[Token]:
@@ -184,27 +182,34 @@ class BSLLexer:
                 pos = match.end()
                 continue
             
-            # ВАЖНО: Многострочные строки ПЕРЕД обычными строками и операторами!
-            # Проверяем многострочные строки (начинаются с |)
-            if match := self.patterns['multiline_string'].match(text, pos):
+            # Строки: начинаются с ", заканчиваются ", экранирование ""
+            # ВАЖНО: Этот метод НЕ поддерживает многострочные строки!
+            # Многострочные строки обрабатываются в OneCHighlighter через состояния
+            if text[pos] == '"':
+                start = pos
+                pos += 1
+                
+                # Ищем закрывающую кавычку
+                while pos < length:
+                    if text[pos] == '"':
+                        # Проверяем, не экранированная ли это кавычка ("")
+                        if pos + 1 < length and text[pos + 1] == '"':
+                            # Это "" - экранированная кавычка, пропускаем обе
+                            pos += 2
+                            continue
+                        else:
+                            # Это закрывающая кавычка
+                            pos += 1
+                            break
+                    else:
+                        pos += 1
+                
                 tokens.append(Token(
                     TokenType.STRING,
-                    match.group(),
-                    match.start(),
-                    match.end()
+                    text[start:pos],
+                    start,
+                    pos
                 ))
-                pos = match.end()
-                continue
-            
-            # Строки
-            if match := self.patterns['string'].match(text, pos):
-                tokens.append(Token(
-                    TokenType.STRING,
-                    match.group(),
-                    match.start(),
-                    match.end()
-                ))
-                pos = match.end()
                 continue
             
             # Числа
@@ -286,8 +291,13 @@ class OneCHighlighter(QSyntaxHighlighter):
     - Поддержка комментариев, строк, ключевых слов, функций
     - Различение переменных и вызовов функций
     - Обработка директив препроцессора
-    - Поддержка многострочных строк с |
+    - Поддержка многострочных строк (через состояния блоков)
+    - Корректная обработка экранирования кавычек ("")
     """
+    
+    # Константы состояний для многострочных строк
+    STATE_NORMAL = 0
+    STATE_IN_STRING = 1
     
     def __init__(self, parent=None, color_scheme=None):
         super().__init__(parent)
@@ -335,6 +345,8 @@ class OneCHighlighter(QSyntaxHighlighter):
         Основной метод подсветки блока текста.
         Вызывается автоматически QSyntaxHighlighter для каждой строки.
         Работает асинхронно, не блокируя UI.
+        
+        Обрабатывает многострочные строки через состояния блоков.
         """
         if not text:
             return
@@ -342,19 +354,98 @@ class OneCHighlighter(QSyntaxHighlighter):
         # Устанавливаем базовый формат
         self.setFormat(0, len(text), self.formats['normal'])
         
+        # Проверяем, находимся ли мы внутри многострочной строки
+        prev_state = self.previousBlockState()
+        in_string = (prev_state == self.STATE_IN_STRING)
+        
+        pos = 0
+        length = len(text)
+        
+        # Если начинаем внутри строки, ищем её окончание
+        if in_string:
+            string_start = 0
+            while pos < length:
+                if text[pos] == '"':
+                    # Проверяем экранирование
+                    if pos + 1 < length and text[pos + 1] == '"':
+                        pos += 2
+                        continue
+                    else:
+                        # Конец строки найден
+                        pos += 1
+                        self.setFormat(string_start, pos - string_start, self.formats['string'])
+                        in_string = False
+                        break
+                else:
+                    pos += 1
+            
+            # Если строка не закрыта на этой строке
+            if in_string:
+                self.setFormat(0, length, self.formats['string'])
+                self.setCurrentBlockState(self.STATE_IN_STRING)
+                return
+        
         # Токенизация и применение форматов
         try:
-            tokens = self.lexer.tokenize(text)
-            
-            for token in tokens:
-                # Получаем формат для типа токена
-                fmt = self._get_format_for_token(token.type)
-                if fmt:
-                    # Применяем формат к соответствующему участку текста
-                    self.setFormat(token.start, token.end - token.start, fmt)
+            while pos < length:
+                # Пропускаем пробелы
+                if text[pos].isspace():
+                    pos += 1
+                    continue
+                
+                # Проверяем начало строки
+                if text[pos] == '"':
+                    string_start = pos
+                    pos += 1
+                    
+                    # Ищем конец строки
+                    string_closed = False
+                    while pos < length:
+                        if text[pos] == '"':
+                            # Проверяем экранирование
+                            if pos + 1 < length and text[pos + 1] == '"':
+                                pos += 2
+                                continue
+                            else:
+                                # Конец строки
+                                pos += 1
+                                string_closed = True
+                                break
+                        else:
+                            pos += 1
+                    
+                    # Применяем формат строки
+                    self.setFormat(string_start, pos - string_start, self.formats['string'])
+                    
+                    # Если строка не закрыта, устанавливаем состояние
+                    if not string_closed:
+                        self.setCurrentBlockState(self.STATE_IN_STRING)
+                        return
+                    
+                    continue
+                
+                # Для остальных токенов используем лексер
+                # Находим следующий токен
+                remaining_text = text[pos:]
+                tokens = self.lexer.tokenize(remaining_text)
+                
+                if tokens:
+                    token = tokens[0]
+                    fmt = self._get_format_for_token(token.type)
+                    if fmt and token.type != TokenType.STRING:  # Строки уже обработаны выше
+                        self.setFormat(pos + token.start, token.end - token.start, fmt)
+                    pos += token.end
+                else:
+                    # Если токен не распознан, пропускаем символ
+                    pos += 1
+        
         except Exception as e:
             # В случае ошибки просто не подсвечиваем (не ломаем UI)
             pass
+        
+        # Устанавливаем нормальное состояние, если не внутри строки
+        if not in_string:
+            self.setCurrentBlockState(self.STATE_NORMAL)
     
     def _get_format_for_token(self, token_type: TokenType):
         """
