@@ -3,12 +3,14 @@
 Пример интеграции подсветки синтаксиса 1С в редактор.
 """
 
-from PySide6.QtWidgets import QMainWindow, QPlainTextEdit
+from PySide6.QtWidgets import QMainWindow
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QShortcut, QKeySequence, QTextCursor
+from PySide6.QtGui import QFont, QShortcut, QKeySequence, QTextCursor, QKeyEvent
 
 from ui.styles import EditorStyles
 from ui.syntax_highlighter import OneCHighlighter, COLOR_SCHEMES
+from ui.line_numbers import CodeEditor
+from core.settings import get_settings, save_settings
 
 
 class OverlayWindow(QMainWindow):
@@ -19,19 +21,37 @@ class OverlayWindow(QMainWindow):
     on_cancel = Signal()    # Просто скрыть окно
     on_exit_app = Signal()  # ПОЛНЫЙ ВЫХОД из приложения
 
-    def __init__(self, enable_highlighting=True, color_scheme='high_contrast_dark'):
+    def __init__(self, enable_highlighting=None, color_scheme=None):
         super().__init__()
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
         self.apply_style()
         
-        # Создаем редактор
-        self.editor = QPlainTextEdit()
+        # Загружаем настройки
+        self.settings = get_settings()
+        
+        # Используем параметры или настройки
+        if enable_highlighting is None:
+            enable_highlighting = self.settings.enable_highlighting
+        if color_scheme is None:
+            color_scheme = self.settings.color_scheme
+        
+        # Создаем редактор с номерами строк
+        self.editor = CodeEditor()
+        self.editor.set_show_line_numbers(self.settings.show_line_numbers)
+        
+        # Настройка шрифта
         font = QFont(
             EditorStyles.get_font_family(),
-            EditorStyles.get_font_size()
+            self.settings.font_size
         )
         font.setStyleHint(QFont.Monospace)
         self.editor.setFont(font)
+        
+        # Настройка табуляции
+        self.editor.setTabStopDistance(
+            self.editor.fontMetrics().horizontalAdvance(' ') * self.settings.tab_width
+        )
+        
         self.setCentralWidget(self.editor)
 
         # Подсветка синтаксиса
@@ -41,6 +61,19 @@ class OverlayWindow(QMainWindow):
 
         # Хоткеи
         self._setup_shortcuts()
+        
+        # Перехват нажатия клавиш для замены табов
+        self.editor.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        """Перехват событий для замены табов на пробелы."""
+        if obj == self.editor and event.type() == QKeyEvent.KeyPress:
+            if event.key() == Qt.Key_Tab and self.settings.replace_tabs_with_spaces:
+                # Заменяем таб на пробелы
+                cursor = self.editor.textCursor()
+                cursor.insertText(' ' * self.settings.tab_width)
+                return True
+        return super().eventFilter(obj, event)
 
     def _setup_syntax_highlighter(self, color_scheme='dark'):
         """
@@ -113,3 +146,36 @@ class OverlayWindow(QMainWindow):
         if self.highlighter:
             scheme = COLOR_SCHEMES.get(color_scheme, COLOR_SCHEMES['dark'])
             self.highlighter.set_color_scheme(scheme)
+    
+    def update_settings(self, **kwargs):
+        """
+        Обновить настройки редактора.
+        
+        Примеры:
+            update_settings(show_line_numbers=False)
+            update_settings(tab_width=3, replace_tabs_with_spaces=True)
+        """
+        self.settings.update(**kwargs)
+        
+        # Применяем изменения
+        if 'show_line_numbers' in kwargs:
+            self.editor.set_show_line_numbers(self.settings.show_line_numbers)
+        
+        if 'tab_width' in kwargs:
+            self.editor.setTabStopDistance(
+                self.editor.fontMetrics().horizontalAdvance(' ') * self.settings.tab_width
+            )
+        
+        if 'font_size' in kwargs:
+            font = self.editor.font()
+            font.setPointSize(self.settings.font_size)
+            self.editor.setFont(font)
+        
+        if 'color_scheme' in kwargs and self.highlighter:
+            self.change_color_scheme(self.settings.color_scheme)
+        
+        if 'enable_highlighting' in kwargs:
+            self.toggle_highlighting(self.settings.enable_highlighting)
+        
+        # Сохраняем настройки
+        save_settings()
