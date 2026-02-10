@@ -3,7 +3,7 @@
 Виджет для отображения номеров строк в редакторе.
 """
 
-from PySide6.QtWidgets import QWidget, QPlainTextEdit
+from PySide6.QtWidgets import QWidget, QPlainTextEdit, QTextEdit
 from PySide6.QtCore import Qt, QRect, QSize
 from PySide6.QtGui import QPainter, QColor, QTextFormat
 
@@ -115,7 +115,7 @@ class CodeEditor(QPlainTextEdit):
         extra_selections = []
         
         if not self.isReadOnly():
-            selection = QPlainTextEdit.ExtraSelection()
+            selection = QTextEdit.ExtraSelection()
             line_color = QColor(60, 64, 72)
             selection.format.setBackground(line_color)
             selection.format.setProperty(QTextFormat.FullWidthSelection, True)
