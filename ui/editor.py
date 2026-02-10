@@ -113,6 +113,10 @@ class OverlayWindow(QMainWindow):
         QShortcut(QKeySequence("Esc"), self).activated.connect(self._cancel)
         # Shift + Esc - Полный выход
         QShortcut(QKeySequence("Shift+Esc"), self).activated.connect(self._exit_full)
+        # Alt + Up - Предыдущий метод
+        QShortcut(QKeySequence("Alt+Up"), self).activated.connect(self._navigate_to_previous_method)
+        # Alt + Down - Следующий метод
+        QShortcut(QKeySequence("Alt+Down"), self).activated.connect(self._navigate_to_next_method)
 
     def open_with_text(self, text):
         """Открыть редактор с текстом"""
@@ -202,6 +206,100 @@ class OverlayWindow(QMainWindow):
         
         # Сохраняем настройки
         save_settings()
+
+    # --- Method Navigation ---
+    
+    def _navigate_to_previous_method(self):
+        """Переход к началу предыдущего метода (Alt+Up)."""
+        # Обновляем список методов, если нужно
+        if not self._method_ranges:
+            self._scan_methods()
+        
+        if not self._method_ranges:
+            return  # Нет методов
+        
+        current_line = self.editor.textCursor().blockNumber()
+        
+        # Ищем предыдущий метод
+        target_line = None
+        for m_range in reversed(self._method_ranges):
+            # Ищем метод, чья сигнатура находится строго выше текущей позиции
+            if m_range['sig'] < current_line:
+                target_line = m_range['sig']
+                break
+        
+        if target_line is not None:
+            self._move_cursor_to_line_start(target_line)
+            self._scroll_to_top(target_line)
+    
+    def _navigate_to_next_method(self):
+        """Переход к началу следующего метода (Alt+Down)."""
+        # Обновляем список методов, если нужно
+        if not self._method_ranges:
+            self._scan_methods()
+        
+        if not self._method_ranges:
+            return  # Нет методов
+        
+        current_line = self.editor.textCursor().blockNumber()
+        
+        # Ищем следующий метод
+        target_line = None
+        for m_range in self._method_ranges:
+            # Ищем метод, чья сигнатура находится строго ниже текущей позиции
+            if m_range['sig'] > current_line:
+                target_line = m_range['sig']
+                break
+        
+        if target_line is not None:
+            self._move_cursor_to_line_start(target_line)
+            self._scroll_to_top(target_line)
+    
+    def _move_cursor_to_line_start(self, line_number):
+        """Установить курсор в начало указанной строки."""
+        cursor = self.editor.textCursor()
+        
+        # Переходим к началу указанной строки
+        block = self.editor.document().findBlockByNumber(line_number)
+        if block.isValid():
+            cursor.setPosition(block.position())
+            cursor.movePosition(QTextCursor.StartOfLine)
+            self.editor.setTextCursor(cursor)
+    
+    def _scroll_to_top(self, line_number):
+        """Прокрутить редактор так, чтобы указанная строка была вверху."""
+        # Получаем блок по номеру строки
+        block = self.editor.document().findBlockByNumber(line_number)
+        if not block.isValid():
+            return
+        
+        # Создаем курсор на этой позиции
+        cursor = QTextCursor(block)
+        
+        # Используем ensureCursorVisible для базовой прокрутки
+        self.editor.setTextCursor(cursor)
+        self.editor.ensureCursorVisible()
+        
+        # Дополнительная прокрутка, чтобы строка была ближе к верху
+        # Получаем геометрию видимой области
+        viewport = self.editor.viewport()
+        viewport_height = viewport.height()
+        
+        # Получаем координаты курсора
+        cursor_rect = self.editor.cursorRect(cursor)
+        
+        # Вычисляем желаемое смещение (строка должна быть в верхней части)
+        desired_offset = int(viewport_height * 0.1)  # 10% от верха
+        
+        # Прокручиваем вертикальный скроллбар
+        scrollbar = self.editor.verticalScrollBar()
+        current_value = scrollbar.value()
+        
+        # Вычисляем смещение для прокрутки
+        scroll_adjustment = cursor_rect.top() - desired_offset
+        
+        # Применяем прокрутку
+        scrollbar.setValue(current_value + scroll_adjustment)
 
     # --- Logic for Auto Folding ---
 
