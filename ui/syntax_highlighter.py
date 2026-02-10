@@ -1,37 +1,254 @@
 """
 Подсветка синтаксиса 1С (BSL) для QPlainTextEdit.
-Использует Pygments для лексического анализа и QSyntaxHighlighter для рендеринга.
-
-Основан на реализации Spyder IDE:
-https://github.com/spyder-ide/spyder/blob/master/spyder/utils/syntaxhighlighters.py
+Использует собственный лексер для анализа и QSyntaxHighlighter для рендеринга.
 """
 
+import re
+from enum import Enum, auto
 from PySide6.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor, QFont
 
-try:
-    from pygments import lex
-    from pygments.lexers import get_lexer_by_name
-    from pygments.token import (
-        Token, Keyword, Name, Comment, String, Number, Operator,
-        Punctuation, Literal, Error, Whitespace, Text
-    )
-    PYGMENTS_AVAILABLE = True
-except ImportError:
-    PYGMENTS_AVAILABLE = False
+
+class TokenType(Enum):
+    """Типы токенов для 1С (BSL)"""
+    KEYWORD = auto()
+    BUILTIN = auto()
+    FUNCTION = auto()
+    COMMENT = auto()
+    STRING = auto()
+    NUMBER = auto()
+    DIRECTIVE = auto()
+    OPERATOR = auto()
+    ERROR = auto()
+    NORMAL = auto()
+    WHITESPACE = auto()
+
+
+class Token:
+    """Токен лексера"""
+    __slots__ = ('type', 'value', 'start', 'end')
+    
+    def __init__(self, token_type: TokenType, value: str, start: int, end: int):
+        self.type = token_type
+        self.value = value
+        self.start = start
+        self.end = end
+    
+    def __repr__(self):
+        return f"Token({self.type.name}, '{self.value}', {self.start}, {self.end})"
+
+
+class BSLLexer:
+    """
+    Лексический анализатор для языка 1С (BSL).
+    Поддерживает:
+    - Ключевые слова (Процедура, Функция, Если и т.д.)
+    - Встроенные функции и типы
+    - Комментарии (однострочные //)
+    - Строки (обычные "..." и многострочные |...)
+    - Числа
+    - Директивы препроцессора (#Если, &НаКлиенте)
+    - Операторы
+    """
+    
+    # Ключевые слова 1С (регистронезависимые)
+    KEYWORDS = {
+        # Объявления
+        'процедура', 'procedure', 'функция', 'function', 'конецпроцедуры', 'endprocedure',
+        'конецфункции', 'endfunction', 'перем', 'var', 'экспорт', 'export',
+        
+        # Управляющие конструкции
+        'если', 'if', 'тогда', 'then', 'иначеесли', 'elseif', 'elsif', 'иначе', 'else',
+        'конецесли', 'endif', 'для', 'for', 'каждого', 'each', 'из', 'in', 'по', 'to',
+        'цикл', 'do', 'конеццикла', 'enddo', 'пока', 'while', 'попытка', 'try',
+        'исключение', 'except', 'конецпопытки', 'endtry', 'вызватьисключение', 'raise',
+        'возврат', 'return', 'продолжить', 'continue', 'прервать', 'break',
+        
+        # Логические
+        'и', 'and', 'или', 'or', 'не', 'not', 'истина', 'true', 'ложь', 'false',
+        'неопределено', 'undefined', 'null',
+        
+        # Прочее
+        'новый', 'new', 'выполнить', 'execute', 'перейти', 'goto',
+    }
+    
+    # Встроенные функции и типы (примеры основных)
+    BUILTINS = {
+        # Типы
+        'число', 'number', 'строка', 'string', 'дата', 'date', 'булево', 'boolean',
+        'тип', 'type', 'типзначения', 'typeof',
+        
+        # Функции работы со строками
+        'строка', 'string', 'стрдлина', 'strlen', 'стрзаменить', 'strreplace',
+        'стрнайти', 'strfind', 'врег', 'upper', 'нрег', 'lower', 'сокрлп', 'trimall',
+        'сокрл', 'triml', 'сокрп', 'trimr', 'лев', 'left', 'прав', 'right',
+        'сред', 'mid', 'стрразделить', 'strsplit', 'стрсоединить', 'strjoin',
+        
+        # Функции работы с числами
+        'число', 'number', 'цел', 'int', 'окр', 'round', 'макс', 'max', 'мин', 'min',
+        
+        # Функции работы с датами
+        'дата', 'date', 'текущаядата', 'currentdate', 'год', 'year', 'месяц', 'month',
+        'день', 'day', 'час', 'hour', 'минута', 'minute', 'секунда', 'second',
+        'началодня', 'begofday', 'началомесяца', 'begofmonth', 'началогода', 'begofyear',
+        'конецдня', 'endofday', 'конецмесяца', 'endofmonth', 'конецгода', 'endofyear',
+        
+        # Системные функции
+        'сообщить', 'message', 'предупреждение', 'alert', 'вопрос', 'question',
+        'значениезаполнено', 'valuefilled', 'формат', 'format', 'стршаблон', 'strtemplate',
+        
+        # Коллекции
+        'массив', 'array', 'структура', 'structure', 'соответствие', 'map',
+        'списокзначений', 'valuelist', 'таблицазначений', 'valuetable',
+        'деревозначений', 'valuetree', 'фиксированныймассив', 'fixedarray',
+        'фиксированнаяструктура', 'fixedstructure', 'фиксированноесоответствие', 'fixedmap',
+    }
+    
+    def __init__(self):
+        # Компиляция регулярных выражений для производительности
+        self.patterns = {
+            'whitespace': re.compile(r'\s+'),
+            'comment': re.compile(r'//[^\n]*'),
+            'directive': re.compile(r'[#&][А-Яа-яA-Za-z_][А-Яа-яA-Za-z0-9_]*'),
+            'string': re.compile(r'"(?:[^"]|"")*"'),  # Строки с экранированием ""
+            'multiline_string': re.compile(r'\|[^\n]*'),  # Многострочная строка
+            'number': re.compile(r'\b\d+(?:\.\d+)?\b'),  # Целые и дробные числа
+            'identifier': re.compile(r'[А-Яа-яA-Za-z_][А-Яа-яA-Za-z0-9_]*'),
+            'operator': re.compile(r'[+\-*/%=<>!;,\.()\[\]{}:]'),
+        }
+    
+    def tokenize(self, text: str) -> list[Token]:
+        """
+        Токенизация строки текста.
+        
+        Args:
+            text: Исходный текст для анализа
+            
+        Returns:
+            Список токенов
+        """
+        tokens = []
+        pos = 0
+        length = len(text)
+        
+        while pos < length:
+            # Пробелы (пропускаем, но можно добавить в tokens при необходимости)
+            if match := self.patterns['whitespace'].match(text, pos):
+                pos = match.end()
+                continue
+            
+            # Комментарии
+            if match := self.patterns['comment'].match(text, pos):
+                tokens.append(Token(
+                    TokenType.COMMENT,
+                    match.group(),
+                    match.start(),
+                    match.end()
+                ))
+                pos = match.end()
+                continue
+            
+            # Директивы препроцессора (#Если, &НаКлиенте)
+            if match := self.patterns['directive'].match(text, pos):
+                tokens.append(Token(
+                    TokenType.DIRECTIVE,
+                    match.group(),
+                    match.start(),
+                    match.end()
+                ))
+                pos = match.end()
+                continue
+            
+            # Строки
+            if match := self.patterns['string'].match(text, pos):
+                tokens.append(Token(
+                    TokenType.STRING,
+                    match.group(),
+                    match.start(),
+                    match.end()
+                ))
+                pos = match.end()
+                continue
+            
+            # Многострочные строки (начинаются с |)
+            if match := self.patterns['multiline_string'].match(text, pos):
+                tokens.append(Token(
+                    TokenType.STRING,
+                    match.group(),
+                    match.start(),
+                    match.end()
+                ))
+                pos = match.end()
+                continue
+            
+            # Числа
+            if match := self.patterns['number'].match(text, pos):
+                tokens.append(Token(
+                    TokenType.NUMBER,
+                    match.group(),
+                    match.start(),
+                    match.end()
+                ))
+                pos = match.end()
+                continue
+            
+            # Идентификаторы (ключевые слова, встроенные функции, имена)
+            if match := self.patterns['identifier'].match(text, pos):
+                value = match.group()
+                value_lower = value.lower()
+                
+                # Проверяем, является ли идентификатор ключевым словом
+                if value_lower in self.KEYWORDS:
+                    token_type = TokenType.KEYWORD
+                # Проверяем, является ли встроенной функцией
+                elif value_lower in self.BUILTINS:
+                    token_type = TokenType.BUILTIN
+                else:
+                    # Обычный идентификатор (имя переменной, функции и т.д.)
+                    token_type = TokenType.FUNCTION
+                
+                tokens.append(Token(
+                    token_type,
+                    value,
+                    match.start(),
+                    match.end()
+                ))
+                pos = match.end()
+                continue
+            
+            # Операторы и пунктуация
+            if match := self.patterns['operator'].match(text, pos):
+                tokens.append(Token(
+                    TokenType.OPERATOR,
+                    match.group(),
+                    match.start(),
+                    match.end()
+                ))
+                pos = match.end()
+                continue
+            
+            # Неизвестный символ - ошибка
+            tokens.append(Token(
+                TokenType.ERROR,
+                text[pos],
+                pos,
+                pos + 1
+            ))
+            pos += 1
+        
+        return tokens
 
 
 class OneCHighlighter(QSyntaxHighlighter):
     """
-    Подсветка синтаксиса 1С:Enterprise (BSL) на основе Pygments.
-    
-    Для работы требует установки: pip install pygments-bsl
+    Подсветка синтаксиса 1С:Enterprise (BSL) на основе собственного лексера.
     
     Особенности:
     - Асинхронная подсветка через QSyntaxHighlighter (не блокирует UI)
+    - Собственный быстрый лексер без внешних зависимостей
     - Гибкая настройка цветовой схемы
     - Поддержка комментариев, строк, ключевых слов, функций
-    - Автоматическое определение контекста через Pygments
-    - Обработка многострочных строк
+    - Обработка директив препроцессора
+    - Поддержка многострочных строк с |
     """
     
     def __init__(self, parent=None, color_scheme=None):
@@ -44,17 +261,8 @@ class OneCHighlighter(QSyntaxHighlighter):
         self.formats = {}
         self._setup_formats()
         
-        # Pygments лексер для 1С
-        self.lexer = None
-        if PYGMENTS_AVAILABLE:
-            try:
-                # Попытка использовать BSL лексер из pygments-bsl
-                self.lexer = get_lexer_by_name('bsl')
-            except:
-                print("Warning: pygments-bsl not found. Highlighting disabled.")
-                self.lexer = None
-        else:
-            print("Warning: Pygments not found. Highlighting disabled.")
+        # Инициализация лексера
+        self.lexer = BSLLexer()
     
     def _get_default_color_scheme(self):
         """Цветовая схема по умолчанию (темная тема в стиле VS Code)"""
@@ -62,10 +270,10 @@ class OneCHighlighter(QSyntaxHighlighter):
             'keyword': ('#569CD6', True, False),      # Синие жирные
             'builtin': ('#4EC9B0', False, False),     # Бирюзовые
             'function': ('#DCDCAA', False, False),    # Желтоватые
-            'comment': ('#6A9955', False, False),     # Зеленые БЕЗ курсива
+            'comment': ('#6A9955', False, False),     # Зеленые
             'string': ('#CE9178', False, False),      # Оранжевые
             'number': ('#B5CEA8', False, False),      # Светло-зеленые
-            'directive': ('#C586C0', False, False),   # Фиолетовые (#Если, #Тогда)
+            'directive': ('#C586C0', False, False),   # Фиолетовые
             'operator': ('#D4D4D4', False, False),    # Белые
             'error': ('#F44747', False, False),       # Красные
             'normal': ('#D4D4D4', False, False),      # Белый текст
@@ -88,6 +296,7 @@ class OneCHighlighter(QSyntaxHighlighter):
         """
         Основной метод подсветки блока текста.
         Вызывается автоматически QSyntaxHighlighter для каждой строки.
+        Работает асинхронно, не блокируя UI.
         """
         if not text:
             return
@@ -95,78 +304,44 @@ class OneCHighlighter(QSyntaxHighlighter):
         # Устанавливаем базовый формат
         self.setFormat(0, len(text), self.formats['normal'])
         
-        if self.lexer and PYGMENTS_AVAILABLE:
-            # Использование Pygments для точной подсветки
-            self._highlight_with_pygments(text)
-    
-    def _highlight_with_pygments(self, text):
-        """
-        Подсветка с использованием Pygments (более точная и полная).
-        """
+        # Токенизация и применение форматов
         try:
-            # Получаем токены от Pygments
-            tokens = list(lex(text, self.lexer))
+            tokens = self.lexer.tokenize(text)
             
-            # Применяем форматирование для каждого токена
-            offset = 0
-            for token_type, token_value in tokens:
-                length = len(token_value)
-                
-                # Определяем формат для токена
-                fmt = self._get_format_for_token(token_type)
+            for token in tokens:
+                # Получаем формат для типа токена
+                fmt = self._get_format_for_token(token.type)
                 if fmt:
-                    self.setFormat(offset, length, fmt)
-                
-                offset += length
+                    # Применяем формат к соответствующему участку текста
+                    self.setFormat(token.start, token.end - token.start, fmt)
         except Exception as e:
-            # В случае ошибки просто не подсвечиваем
+            # В случае ошибки просто не подсвечиваем (не ломаем UI)
             pass
     
-    def _get_format_for_token(self, token_type):
+    def _get_format_for_token(self, token_type: TokenType):
         """
-        Сопоставление типов токенов Pygments с нашими форматами.
-        Используем строковое представление типа для надежного сопоставления.
+        Сопоставление типов токенов с форматами.
+        
+        Args:
+            token_type: Тип токена из TokenType
+            
+        Returns:
+            QTextCharFormat или None
         """
-        token_str = str(token_type)
+        mapping = {
+            TokenType.KEYWORD: 'keyword',
+            TokenType.BUILTIN: 'builtin',
+            TokenType.FUNCTION: 'function',
+            TokenType.COMMENT: 'comment',
+            TokenType.STRING: 'string',
+            TokenType.NUMBER: 'number',
+            TokenType.DIRECTIVE: 'directive',
+            TokenType.OPERATOR: 'operator',
+            TokenType.ERROR: 'error',
+        }
         
-        # Комментарии (включая многострочные и специальные)
-        if 'Comment' in token_str:
-            return self.formats['comment']
-        
-        # Строки (включая Doc-строки и многострочные)
-        if 'String' in token_str or 'Literal.String' in token_str:
-            return self.formats['string']
-        
-        # Числа
-        if 'Number' in token_str or 'Literal.Number' in token_str:
-            return self.formats['number']
-        
-        # Ключевые слова (Procedure, Function, If, etc.)
-        if 'Keyword' in token_str:
-            return self.formats['keyword']
-        
-        # Встроенные функции и типы (GlobalContext)
-        if 'Name.Builtin' in token_str:
-            return self.formats['builtin']
-            
-        # Объявления функций и вызовы
-        if 'Name.Function' in token_str:
-            return self.formats['function']
-            
-        # Директивы препроцессора (&НаКлиенте, #Если)
-        # В Pygments BSL они могут определяться как Comment.Preproc или Keyword
-        if 'Comment.Preproc' in token_str or 'Directive' in token_str:
-            return self.formats['directive']
-        
-        # Операторы и пунктуация
-        if 'Operator' in token_str or 'Punctuation' in token_str:
-            return self.formats['operator']
-        
-        # Ошибки
-        if 'Error' in token_str:
-            return self.formats['error']
-        
-        return None
+        format_name = mapping.get(token_type)
+        return self.formats.get(format_name) if format_name else None
     
     def set_color_scheme(self, color_scheme):
         """
