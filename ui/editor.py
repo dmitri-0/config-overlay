@@ -184,7 +184,8 @@ class OverlayWindow(QMainWindow):
             )
         
         if 'font_size' in kwargs:
-            font = self.editor.font()\n            font.setPointSize(self.settings.font_size)
+            font = self.editor.font()
+            font.setPointSize(self.settings.font_size)
             self.editor.setFont(font)
         
         if 'color_scheme' in kwargs and self.highlighter:
