@@ -44,7 +44,7 @@ class BSLLexer:
     - Ключевые слова (Процедура, Функция, Если и т.д.)
     - Встроенные функции и типы
     - Комментарии (однострочные //)
-    - Строки (обычные "..." с многострочными продолжениями)
+    - Строки (обычные "..." и многострочные |...)
     - Числа
     - Директивы препроцессора (#Если, &НаКлиенте)
     - Операторы
@@ -106,49 +106,27 @@ class BSLLexer:
         # Системные функции
         'сообщить', 'message', 'предупреждение', 'alert', 'вопрос', 'question',
         'значениезаполнено', 'valuefilled', 'формат', 'format',
-        'xmlстрока', 'xmlstring', 'xmlзначение', 'xmlvalue', 'xmlтип', 'xmltype',
-        'base64строка', 'base64string', 'base64значение', 'base64value',
-        'получитьвремяta', 'getta', 'получитьзначенияотбора', 'getfiltervalues',
+        'xmlstring', 'xmlvalue', 'xmltype',
+        'base64string', 'base64value',
         
         # Коллекции и структуры данных
         'массив', 'array', 'структура', 'structure', 'соответствие', 'map',
         'списокзначений', 'valuelist', 'таблицазначений', 'valuetable',
         'деревозначений', 'valuetree', 'фиксированныймассив', 'fixedarray',
         'фиксированнаяструктура', 'fixedstructure', 'фиксированноесоответствие', 'fixedmap',
-        'деревострок', 'rowtree', 'коллекциястрок', 'rowcollection',
         
-        # Запросы и работа с БД
+        # Запросы
         'запрос', 'query', 'построительзапроса', 'querybuilder',
         'схемазапроса', 'queryschema', 'менеджервременныхтаблиц', 'tempquerytablelist',
-        'пакетзапросов', 'querybatch', 'выборка', 'selection',
-        'выборкадетальныхзаписей', 'detailedrecordsselection',
         
         # Работа с файлами
-        'файл', 'file', 'найтифайлы', 'findfiles', 'каталогвременныхфайлов', 'tempfilesdir',
-        'получитьимявременногофайла', 'gettempfilename', 'каталогдокументов', 'documentsdir',
-        'объединитьпути', 'combinepaths', 'разделитьфайл', 'splitfile',
-        'удалитьфайлы', 'deletefiles', 'копироватьфайл', 'copyfile',
-        'переместитьфайл', 'movefile', 'создатькаталог', 'createdir',
-        
-        # XML, JSON
-        'чтениеxml', 'xmlreader', 'записьxml', 'xmlwriter',
-        'чтениеjson', 'jsonreader', 'записьjson', 'jsonwriter',
-        'прочитатьjson', 'readjson', 'записатьjson', 'writejson',
+        'файл', 'file', 'найтифайлы', 'findfiles',
+        'объединитьпути', 'combinepaths',
         
         # Прочие типы
         'uuid', 'уникальныйидентификатор', 'uniqueidentifier',
-        'двоичныеданные', 'binarydata', 'картинка', 'picture',
-        'шрифт', 'font', 'цвет', 'color', 'граница', 'border', 'линия', 'line',
-        'хранилищезначения', 'valuestorage', 'указательссылки', 'referencepointer',
-        'границы', 'boundaries', 'точность', 'accuracy', 'квалификаторыдаты', 'datequalifiers',
-        'квалификаторыстроки', 'stringqualifiers', 'квалификаторычисла', 'numberqualifiers',
-        'квалификаторыдвоичныхданных', 'binarydataqualifiers',
-        
-        # Системные перечисления (примеры)
-        'видсравнения', 'comparevalues', 'использованиережимаблокировкиданных', 'datalockusagemode',
-        'режимавтовремя', 'autotimemode', 'режимблокировкиданных', 'datalockmode',
-        'режимтранзакции', 'transactionmode', 'состояниевнешнегоисточникаданных', 'externaldatasourcestate',
-        'типплатформы', 'platformtype', 'режимзапускаклиентскогоприложения', 'clientruntimemode',
+        'двоичныеданные', 'binarydata',
+        'хранилищезначения', 'valuestorage',
     }
     
     def __init__(self):
@@ -157,10 +135,11 @@ class BSLLexer:
             'whitespace': re.compile(r'\s+'),
             'comment': re.compile(r'//[^\n]*'),
             'directive': re.compile(r'[#&][А-Яа-яA-Za-z_][А-Яа-яA-Za-z0-9_]*'),
+            'multiline_string': re.compile(r'\|[^\n]*'),  # Многострочная строка
             'string': re.compile(r'"(?:[^"]|"")*"'),  # Строки с экранированием ""
             'number': re.compile(r'\b\d+(?:\.\d+)?\b'),  # Целые и дробные числа
             'identifier': re.compile(r'[А-Яа-яA-Za-z_][А-Яа-яA-Za-z0-9_]*'),
-            'operator': re.compile(r'[+\-*/%=<>!;,\.()\[\]{}:]'),
+            'operator': re.compile(r'[+\-*/%=<>!;,\.()\[\]{}:]'),  # БЕЗ |
         }
     
     def tokenize(self, text: str) -> list[Token]:
@@ -178,7 +157,7 @@ class BSLLexer:
         length = len(text)
         
         while pos < length:
-            # Пробелы (пропускаем, но можно добавить в tokens при необходимости)
+            # Пробелы (пропускаем)
             if match := self.patterns['whitespace'].match(text, pos):
                 pos = match.end()
                 continue
@@ -198,6 +177,18 @@ class BSLLexer:
             if match := self.patterns['directive'].match(text, pos):
                 tokens.append(Token(
                     TokenType.DIRECTIVE,
+                    match.group(),
+                    match.start(),
+                    match.end()
+                ))
+                pos = match.end()
+                continue
+            
+            # ВАЖНО: Многострочные строки ПЕРЕД обычными строками и операторами!
+            # Проверяем многострочные строки (начинаются с |)
+            if match := self.patterns['multiline_string'].match(text, pos):
+                tokens.append(Token(
+                    TokenType.STRING,
                     match.group(),
                     match.start(),
                     match.end()
@@ -295,7 +286,7 @@ class OneCHighlighter(QSyntaxHighlighter):
     - Поддержка комментариев, строк, ключевых слов, функций
     - Различение переменных и вызовов функций
     - Обработка директив препроцессора
-    - Поддержка многострочных строк
+    - Поддержка многострочных строк с |
     """
     
     def __init__(self, parent=None, color_scheme=None):
@@ -410,18 +401,6 @@ class OneCHighlighter(QSyntaxHighlighter):
 
 # Предустановленные цветовые схемы
 COLOR_SCHEMES = {
-    'high_contrast_dark': {
-        'keyword': ('#569CD6', True, False),    # Насыщенный синий, жирный
-        'builtin': ('#4EC9B0', False, False),   # Яркий мятный (типы и встроенные)
-        'function': ('#DCDCAA', False, False),  # Классический желтый VS Code
-        'comment': ('#6A9955', False, False),    # Чуть более светлый зеленый для читаемости, курсив [web:1][web:15]
-        'string': ('#CE9178', False, False),    # Теплый терракотовый
-        'number': ('#B5CEA8', False, False),    # Салатовый
-        'directive': ('#C586C0', False, False), # Пурпурный
-        'operator': ("#BB76E4", True, False),   # 
-        'error': ('#F14C4C', True, False),     # Агрессивный красный
-        'normal': ('#E0E0E0', False, False),    # Светло-серый (основной текст)
-    },
     'dark': {
         'keyword': ('#569CD6', True, False),
         'builtin': ('#4EC9B0', False, False),
