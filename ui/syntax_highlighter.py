@@ -7,8 +7,6 @@ https://github.com/spyder-ide/spyder/blob/master/spyder/utils/syntaxhighlighters
 """
 
 from PySide6.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor, QFont
-from PySide6.QtCore import Qt
-import re
 
 try:
     from pygments import lex
