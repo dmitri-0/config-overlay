@@ -28,7 +28,7 @@ class EditorSettings:
     font_size: int = 11
     
     # Автоматическое сворачивание методов
-    auto_fold_methods: bool = True  # Сворачивать все методы кроме текущего (на котором курсор)
+    auto_fold_methods: bool = False  # Сворачивать все методы кроме текущего (на котором курсор)
     
     @classmethod
     def load_from_file(cls, filepath: str = 'editor_settings.json') -> 'EditorSettings':
