@@ -44,7 +44,7 @@ class BSLLexer:
     - Ключевые слова (Процедура, Функция, Если и т.д.)
     - Встроенные функции и типы
     - Комментарии (однострочные //)
-    - Строки (обычные "..." и многострочные |...)
+    - Строки (обычные "..." с многострочными продолжениями)
     - Числа
     - Директивы препроцессора (#Если, &НаКлиенте)
     - Операторы
@@ -73,7 +73,7 @@ class BSLLexer:
     
     # Встроенные функции и типы (примеры основных)
     BUILTINS = {
-        # Типы
+        # Базовые типы
         'число', 'number', 'строка', 'string', 'дата', 'date', 'булево', 'boolean',
         'тип', 'type', 'типзначения', 'typeof',
         
@@ -82,25 +82,73 @@ class BSLLexer:
         'стрнайти', 'strfind', 'врег', 'upper', 'нрег', 'lower', 'сокрлп', 'trimall',
         'сокрл', 'triml', 'сокрп', 'trimr', 'лев', 'left', 'прав', 'right',
         'сред', 'mid', 'стрразделить', 'strsplit', 'стрсоединить', 'strjoin',
+        'стрначинаетсяс', 'strstartswith', 'стрзаканчиваетсяна', 'strendswith',
+        'пустаястрока', 'isblankstring', 'стрчисловхождений', 'stroccurrencecount',
+        'стрсравнить', 'strcompare', 'стрполучитьстроку', 'strgetline',
+        'стрчислострок', 'strlinecount', 'стршаблон', 'strtemplate',
         
         # Функции работы с числами
         'число', 'number', 'цел', 'int', 'окр', 'round', 'макс', 'max', 'мин', 'min',
+        'log', 'log10', 'ln', 'exp', 'pow', 'sqrt', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
         
         # Функции работы с датами
         'дата', 'date', 'текущаядата', 'currentdate', 'год', 'year', 'месяц', 'month',
         'день', 'day', 'час', 'hour', 'минута', 'minute', 'секунда', 'second',
         'началодня', 'begofday', 'началомесяца', 'begofmonth', 'началогода', 'begofyear',
         'конецдня', 'endofday', 'конецмесяца', 'endofmonth', 'конецгода', 'endofyear',
+        'началоквартала', 'begofquarter', 'конецквартала', 'endofquarter',
+        'началонедели', 'begofweek', 'конецнедели', 'endofweek',
+        'началочаса', 'begofhour', 'конечаса', 'endofhour',
+        'началоминуты', 'begofminute', 'конецминуты', 'endofminute',
+        'добавитьмесяц', 'addmonth', 'деньгода', 'dayofyear', 'деньнедели', 'dayofweek',
+        'неделягода', 'weekofyear', 'квартал', 'quarter',
         
         # Системные функции
         'сообщить', 'message', 'предупреждение', 'alert', 'вопрос', 'question',
-        'значениезаполнено', 'valuefilled', 'формат', 'format', 'стршаблон', 'strtemplate',
+        'значениезаполнено', 'valuefilled', 'формат', 'format',
+        'xmlстрока', 'xmlstring', 'xmlзначение', 'xmlvalue', 'xmlтип', 'xmltype',
+        'base64строка', 'base64string', 'base64значение', 'base64value',
+        'получитьвремяta', 'getta', 'получитьзначенияотбора', 'getfiltervalues',
         
-        # Коллекции
+        # Коллекции и структуры данных
         'массив', 'array', 'структура', 'structure', 'соответствие', 'map',
         'списокзначений', 'valuelist', 'таблицазначений', 'valuetable',
         'деревозначений', 'valuetree', 'фиксированныймассив', 'fixedarray',
         'фиксированнаяструктура', 'fixedstructure', 'фиксированноесоответствие', 'fixedmap',
+        'деревострок', 'rowtree', 'коллекциястрок', 'rowcollection',
+        
+        # Запросы и работа с БД
+        'запрос', 'query', 'построительзапроса', 'querybuilder',
+        'схемазапроса', 'queryschema', 'менеджервременныхтаблиц', 'tempquerytablelist',
+        'пакетзапросов', 'querybatch', 'выборка', 'selection',
+        'выборкадетальныхзаписей', 'detailedrecordsselection',
+        
+        # Работа с файлами
+        'файл', 'file', 'найтифайлы', 'findfiles', 'каталогвременныхфайлов', 'tempfilesdir',
+        'получитьимявременногофайла', 'gettempfilename', 'каталогдокументов', 'documentsdir',
+        'объединитьпути', 'combinepaths', 'разделитьфайл', 'splitfile',
+        'удалитьфайлы', 'deletefiles', 'копироватьфайл', 'copyfile',
+        'переместитьфайл', 'movefile', 'создатькаталог', 'createdir',
+        
+        # XML, JSON
+        'чтениеxml', 'xmlreader', 'записьxml', 'xmlwriter',
+        'чтениеjson', 'jsonreader', 'записьjson', 'jsonwriter',
+        'прочитатьjson', 'readjson', 'записатьjson', 'writejson',
+        
+        # Прочие типы
+        'uuid', 'уникальныйидентификатор', 'uniqueidentifier',
+        'двоичныеданные', 'binarydata', 'картинка', 'picture',
+        'шрифт', 'font', 'цвет', 'color', 'граница', 'border', 'линия', 'line',
+        'хранилищезначения', 'valuestorage', 'указательссылки', 'referencepointer',
+        'границы', 'boundaries', 'точность', 'accuracy', 'квалификаторыдаты', 'datequalifiers',
+        'квалификаторыстроки', 'stringqualifiers', 'квалификаторычисла', 'numberqualifiers',
+        'квалификаторыдвоичныхданных', 'binarydataqualifiers',
+        
+        # Системные перечисления (примеры)
+        'видсравнения', 'comparevalues', 'использованиережимаблокировкиданных', 'datalockusagemode',
+        'режимавтовремя', 'autotimemode', 'режимблокировкиданных', 'datalockmode',
+        'режимтранзакции', 'transactionmode', 'состояниевнешнегоисточникаданных', 'externaldatasourcestate',
+        'типплатформы', 'platformtype', 'режимзапускаклиентскогоприложения', 'clientruntimemode',
     }
     
     def __init__(self):
@@ -110,7 +158,6 @@ class BSLLexer:
             'comment': re.compile(r'//[^\n]*'),
             'directive': re.compile(r'[#&][А-Яа-яA-Za-z_][А-Яа-яA-Za-z0-9_]*'),
             'string': re.compile(r'"(?:[^"]|"")*"'),  # Строки с экранированием ""
-            'multiline_string': re.compile(r'\|[^\n]*'),  # Многострочная строка
             'number': re.compile(r'\b\d+(?:\.\d+)?\b'),  # Целые и дробные числа
             'identifier': re.compile(r'[А-Яа-яA-Za-z_][А-Яа-яA-Za-z0-9_]*'),
             'operator': re.compile(r'[+\-*/%=<>!;,\.()\[\]{}:]'),
@@ -169,17 +216,6 @@ class BSLLexer:
                 pos = match.end()
                 continue
             
-            # Многострочные строки (начинаются с |)
-            if match := self.patterns['multiline_string'].match(text, pos):
-                tokens.append(Token(
-                    TokenType.STRING,
-                    match.group(),
-                    match.start(),
-                    match.end()
-                ))
-                pos = match.end()
-                continue
-            
             # Числа
             if match := self.patterns['number'].match(text, pos):
                 tokens.append(Token(
@@ -199,12 +235,22 @@ class BSLLexer:
                 # Проверяем, является ли идентификатор ключевым словом
                 if value_lower in self.KEYWORDS:
                     token_type = TokenType.KEYWORD
-                # Проверяем, является ли встроенной функцией
+                # Проверяем, является ли встроенной функцией/типом
                 elif value_lower in self.BUILTINS:
                     token_type = TokenType.BUILTIN
                 else:
-                    # Обычный идентификатор (имя переменной, функции и т.д.)
-                    token_type = TokenType.FUNCTION
+                    # Проверяем следующий символ - если (, то это вызов функции
+                    next_pos = match.end()
+                    # Пропускаем пробелы после идентификатора
+                    while next_pos < length and text[next_pos].isspace():
+                        next_pos += 1
+                    
+                    # Если следующий символ - открывающая скобка, это функция
+                    if next_pos < length and text[next_pos] == '(':
+                        token_type = TokenType.FUNCTION
+                    else:
+                        # Иначе это переменная
+                        token_type = TokenType.NORMAL
                 
                 tokens.append(Token(
                     token_type,
@@ -247,8 +293,9 @@ class OneCHighlighter(QSyntaxHighlighter):
     - Собственный быстрый лексер без внешних зависимостей
     - Гибкая настройка цветовой схемы
     - Поддержка комментариев, строк, ключевых слов, функций
+    - Различение переменных и вызовов функций
     - Обработка директив препроцессора
-    - Поддержка многострочных строк с |
+    - Поддержка многострочных строк
     """
     
     def __init__(self, parent=None, color_scheme=None):
@@ -338,6 +385,7 @@ class OneCHighlighter(QSyntaxHighlighter):
             TokenType.DIRECTIVE: 'directive',
             TokenType.OPERATOR: 'operator',
             TokenType.ERROR: 'error',
+            TokenType.NORMAL: 'normal',
         }
         
         format_name = mapping.get(token_type)
