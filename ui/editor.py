@@ -19,7 +19,7 @@ class OverlayWindow(QMainWindow):
     on_cancel = Signal()    # Просто скрыть окно
     on_exit_app = Signal()  # ПОЛНЫЙ ВЫХОД из приложения
 
-    def __init__(self, enable_highlighting=True, color_scheme='dark'):
+    def __init__(self, enable_highlighting=True, color_scheme='high_contrast_dark'):
         super().__init__()
         self.setWindowFlags(Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
         self.apply_style()

@@ -410,6 +410,18 @@ class OneCHighlighter(QSyntaxHighlighter):
 
 # Предустановленные цветовые схемы
 COLOR_SCHEMES = {
+    'high_contrast_dark': {
+        'keyword': ('#569CD6', True, False),    # Насыщенный синий, жирный
+        'builtin': ('#4EC9B0', False, False),   # Яркий мятный (типы и встроенные)
+        'function': ('#DCDCAA', False, False),  # Классический желтый VS Code
+        'comment': ('#6A9955', False, False),    # Чуть более светлый зеленый для читаемости, курсив [web:1][web:15]
+        'string': ('#CE9178', False, False),    # Теплый терракотовый
+        'number': ('#B5CEA8', False, False),    # Салатовый
+        'directive': ('#C586C0', False, False), # Пурпурный
+        'operator': ("#BB76E4", True, False),   # 
+        'error': ('#F14C4C', True, False),     # Агрессивный красный
+        'normal': ('#E0E0E0', False, False),    # Светло-серый (основной текст)
+    },
     'dark': {
         'keyword': ('#569CD6', True, False),
         'builtin': ('#4EC9B0', False, False),
