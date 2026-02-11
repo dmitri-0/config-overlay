@@ -272,23 +272,30 @@ class OverlayWindow(QMainWindow):
         if not block.isValid():
             return
         
-        # Сначала используем centerCursor для базовой прокрутки
+        # Устанавливаем курсор на нужную строку
         cursor = QTextCursor(block)
+        cursor.movePosition(QTextCursor.StartOfLine)
         self.editor.setTextCursor(cursor)
-        self.editor.centerCursor()
         
-        # Теперь прокручиваем вверх, чтобы строка была в самом верху
+        # Для QPlainTextEdit используем специальный метод
+        # Прокручиваем так, чтобы блок был первым видимым
+        self.editor.setTextCursor(cursor)
+        
+        # Получаем viewport и вычисляем сколько строк нужно прокрутить
+        first_visible = self.editor.firstVisibleBlock().blockNumber()
+        
+        # Вычисляем разницу
+        lines_to_scroll = first_visible - line_number
+        
+        # Прокручиваем через вертикальный scrollbar
         scrollbar = self.editor.verticalScrollBar()
         
-        # Вычисляем, сколько строк надо прокрутить вверх
-        # Получаем высоту viewport и прокручиваем на половину вверх
-        viewport_height = self.editor.viewport().height()
+        # Каждая строка примерно равна одной единице прокрутки
+        # Но это зависит от высоты строки
         line_height = self.editor.fontMetrics().height()
-        lines_in_half_viewport = viewport_height // (2 * line_height)
         
-        # Прокручиваем вверх на половину экрана (чтобы строка стала сверху)
-        current_value = scrollbar.value()
-        scrollbar.setValue(current_value - lines_in_half_viewport)
+        # Вычисляем текущее значение и корректируем его
+        scrollbar.setValue(scrollbar.value() - lines_to_scroll * line_height)
 
     # --- Logic for Auto Folding ---
 
